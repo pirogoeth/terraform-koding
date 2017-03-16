@@ -20,3 +20,9 @@ variable "aws_az" {
     description = "AWS Availability Zone"
     default = "us-west-1a"
 }
+
+// Domain things
+variable "base_domain" {
+    type = "string"
+    description = "Base domain to use"
+}

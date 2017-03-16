@@ -17,6 +17,18 @@ data "aws_ami" "coreos" {
     }
 }
 
+data "aws_security_group" "default" {
+    id = "sg-2f74324a"
+}
+
+resource "aws_route53_zone" "primary" {
+    name = "${var.base_domain}"
+
+    tags {
+        Environment = "dev"
+    }
+}
+
 resource "aws_ebs_volume" "koding_data" {
     availability_zone = "${var.aws_az}"
     size = 20
@@ -30,13 +42,6 @@ resource "aws_ebs_volume" "koding_data" {
 resource "aws_security_group" "koding_fw" {
     name = "koding_fw"
     description = "FW Rules for Koding access"
-
-    ingress {
-        from_port = 22
-        to_port = 22
-        protocol = "tcp"
-        cidr_blocks = ["0.0.0.0/0"]
-    }
 
     ingress {
         from_port = 80
@@ -53,6 +58,51 @@ resource "aws_security_group" "koding_fw" {
     }
 }
 
+resource "aws_security_group" "coreos_mgmt" {
+    name = "coreos_mgmt"
+    description = "FW rules for coreos access"
+
+    ingress {
+        from_port = 22
+        to_port = 22
+        protocol = "tcp"
+        cidr_blocks = ["0.0.0.0/0"]
+    }
+}
+
+resource "aws_security_group" "coreos_etcd" {
+    name = "coreos_etcd"
+    description = "FW rules for coreos clustering"
+
+    ingress {
+        from_port = 2379
+        to_port = 2379
+        protocol = "tcp"
+        self = true
+    }
+
+    ingress {
+        from_port = 2380
+        to_port = 2380
+        protocol = "tcp"
+        self = true
+    }
+
+    ingress {
+        from_port = 4001
+        to_port = 4001
+        protocol = "tcp"
+        self = true
+    }
+
+    ingress {
+        from_port = 7001
+        to_port = 7001
+        protocol = "tcp"
+        self = true
+    }
+}
+
 resource "aws_instance" "koding" {
     ami = "${data.aws_ami.coreos.id}"
     availability_zone = "${var.aws_az}"
@@ -62,11 +112,28 @@ resource "aws_instance" "koding" {
         delete_on_termination = true
     }
 
-    security_groups = ["${aws_security_group.koding_fw.name}"]
+    security_groups = [
+        "${data.aws_security_group.default.name}",
+        "${aws_security_group.koding_fw.name}",
+        "${aws_security_group.coreos_mgmt.name}",
+        "${aws_security_group.coreos_etcd.name}"
+    ]
+
+    key_name = "yubihsm"
 
     tags {
         Name = "koding"
     }
+}
+
+resource "aws_route53_record" "koding_instance" {
+    zone_id = "${aws_route53_zone.primary.zone_id}"
+    name = "koding.${var.base_domain}"
+    type = "A"
+    ttl = "120"
+    records = [
+        "${aws_instance.koding.public_ip}"
+    ]
 }
 
 resource "aws_volume_attachment" "data_volume" {
