@@ -21,21 +21,86 @@ data "aws_security_group" "default" {
     id = "sg-2f74324a"
 }
 
-data "aws_route53_zone" "primary" {
-    name = "${var.base_domain}"
+resource "random_id" "mg_smtp_password" {
+    keepers {
+        domain_name = "${var.base_domain}"
+    }
+
+    byte_length = 16
+}
+
+resource "aws_route53_zone" "primary" {
+    name = "${var.base_domain}."
 
     tags {
         Environment = "dev"
     }
+
+    lifecycle {
+        prevent_destroy = true
+        ignore_changes = [
+            "comment",
+            "resource_record_set_count",
+        ]
+    }
+}
+
+resource "mailgun_domain" "primary" {
+    name = "${random_id.mg_smtp_password.keepers.domain_name}"
+    spam_action = "disabled"
+    smtp_password = "${random_id.mg_smtp_password.hex}"
+
+#    lifecycle {
+#        prevent_destroy = true
+#    }
+}
+
+resource "aws_route53_record" "mailgun_sending_record_0" {
+  zone_id = "${aws_route53_zone.primary.zone_id}"
+  name    = "${mailgun_domain.primary.sending_records.0.name}."
+  ttl     = "120"
+  type    = "${mailgun_domain.primary.sending_records.0.record_type}"
+  records = ["${mailgun_domain.primary.sending_records.0.value}"]
+}
+
+resource "aws_route53_record" "mailgun_sending_record_1" {
+  zone_id = "${aws_route53_zone.primary.zone_id}"
+  name    = "${mailgun_domain.primary.sending_records.1.name}."
+  ttl     = "120"
+  type    = "${mailgun_domain.primary.sending_records.1.record_type}"
+  records = ["${mailgun_domain.primary.sending_records.1.value}"]
+}
+
+resource "aws_route53_record" "mailgun_sending_record_2" {
+  zone_id = "${aws_route53_zone.primary.zone_id}"
+  name    = "${mailgun_domain.primary.sending_records.2.name}."
+  ttl     = "120"
+  type    = "${mailgun_domain.primary.sending_records.2.record_type}"
+  records = ["${mailgun_domain.primary.sending_records.2.value}"]
+}
+
+resource "aws_route53_record" "mailgun_recv_records" {
+    zone_id = "${aws_route53_zone.primary.zone_id}"
+    name = ""
+    ttl = "120"
+    type = "MX"
+    records = [
+        "${mailgun_domain.primary.receiving_records.0.priority} ${mailgun_domain.primary.receiving_records.0.value}",
+        "${mailgun_domain.primary.receiving_records.1.priority} ${mailgun_domain.primary.receiving_records.1.value}"
+    ]
 }
 
 resource "aws_ebs_volume" "koding_data" {
     availability_zone = "${var.aws_az}"
-    size = 32
+    size = "${var.ephemeral_size}"
     type = "standard"
 
     tags {
         Name = "koding_data"
+    }
+
+    lifecycle {
+        prevent_destroy = true
     }
 }
 
@@ -120,7 +185,7 @@ resource "aws_instance" "koding" {
         "${aws_security_group.coreos_etcd.name}"
     ]
 
-    key_name = "yubihsm"
+    user_data = "${data.ignition_config.coreos.rendered}"
 
     tags {
         Name = "koding"
@@ -128,8 +193,8 @@ resource "aws_instance" "koding" {
 }
 
 resource "aws_route53_record" "koding_instance" {
-    zone_id = "${data.aws_route53_zone.primary.zone_id}"
-    name = "koding.${data.aws_route53_zone.primary.name}"
+    zone_id = "${aws_route53_zone.primary.zone_id}"
+    name = "koding.${aws_route53_zone.primary.name}"
     type = "A"
     ttl = "120"
     records = [
@@ -138,8 +203,8 @@ resource "aws_route53_record" "koding_instance" {
 }
 
 resource "aws_route53_record" "koding_instance_wc" {
-    zone_id = "${data.aws_route53_zone.primary.zone_id}"
-    name = "*.koding.${data.aws_route53_zone.primary.name}"
+    zone_id = "${aws_route53_zone.primary.zone_id}"
+    name = "*.koding.${aws_route53_zone.primary.name}"
     type = "A"
     ttl = "120"
     records = [
@@ -147,16 +212,8 @@ resource "aws_route53_record" "koding_instance_wc" {
     ]
 }
 
-resource "mailgun_domain" "primary" {
-    name = "${var.base_domain}"
-    spam_action = "disabled"
-}
-
-resource "aws_route53_record" "recv_records" {
-}
-
 resource "aws_volume_attachment" "data_volume" {
-    device_name = "/dev/sdv"
+    device_name = "${var.ephemeral_node}"
     instance_id = "${aws_instance.koding.id}"
     volume_id = "${aws_ebs_volume.koding_data.id}"
 }

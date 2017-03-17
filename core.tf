@@ -1,3 +1,7 @@
+terraform {
+    required_version = ">= 0.9.0"
+}
+
 // Vars for setting up AWS provider
 variable "aws_secret" {
     type = "string"
@@ -19,6 +23,19 @@ variable "aws_az" {
     type = "string"
     description = "AWS Availability Zone"
     default = "us-west-1a"
+}
+
+// Ephemeral block device setup
+variable "ephemeral_size" {
+    type = "string"
+    description = "Size of ephemeral block device"
+    default = "32"
+}
+
+variable "ephemeral_node" {
+    type = "string"
+    description = "device node inside EC2 instance"
+    default = "/dev/xvdv"
 }
 
 // Domain things
