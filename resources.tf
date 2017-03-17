@@ -21,7 +21,7 @@ data "aws_security_group" "default" {
     id = "sg-2f74324a"
 }
 
-resource "aws_route53_zone" "primary" {
+data "aws_route53_zone" "primary" {
     name = "${var.base_domain}"
 
     tags {
@@ -31,7 +31,7 @@ resource "aws_route53_zone" "primary" {
 
 resource "aws_ebs_volume" "koding_data" {
     availability_zone = "${var.aws_az}"
-    size = 20
+    size = 32
     type = "standard"
 
     tags {
@@ -110,6 +110,7 @@ resource "aws_instance" "koding" {
 
     root_block_device {
         delete_on_termination = true
+        volume_size = "20"
     }
 
     security_groups = [
@@ -127,13 +128,31 @@ resource "aws_instance" "koding" {
 }
 
 resource "aws_route53_record" "koding_instance" {
-    zone_id = "${aws_route53_zone.primary.zone_id}"
-    name = "koding.${var.base_domain}"
+    zone_id = "${data.aws_route53_zone.primary.zone_id}"
+    name = "koding.${data.aws_route53_zone.primary.name}"
     type = "A"
     ttl = "120"
     records = [
         "${aws_instance.koding.public_ip}"
     ]
+}
+
+resource "aws_route53_record" "koding_instance_wc" {
+    zone_id = "${data.aws_route53_zone.primary.zone_id}"
+    name = "*.koding.${data.aws_route53_zone.primary.name}"
+    type = "A"
+    ttl = "120"
+    records = [
+        "${aws_instance.koding.public_ip}"
+    ]
+}
+
+resource "mailgun_domain" "primary" {
+    name = "${var.base_domain}"
+    spam_action = "disabled"
+}
+
+resource "aws_route53_record" "recv_records" {
 }
 
 resource "aws_volume_attachment" "data_volume" {

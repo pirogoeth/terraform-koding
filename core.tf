@@ -26,3 +26,9 @@ variable "base_domain" {
     type = "string"
     description = "Base domain to use"
 }
+
+// Mailgun setup ;)
+variable "mailgun_api_key" {
+    type = "string"
+    description = "Mailgun account API key"
+}
